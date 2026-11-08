@@ -1,0 +1,11 @@
+# 让 IDE 用和 wasm/build_wasm.sh 一致的 include 路径索引 C++ 源码。
+CompileFlags:
+  Add:
+    - -std=c++17
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/AHT_OT_solver
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/utils
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/SemiOT_solver
+    - -I/opt/homebrew/include/eigen3
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/ddg-exercises/deps/polyscope/deps/stb
+    - -DEIGEN_DONT_VECTORIZE

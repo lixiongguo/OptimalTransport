@@ -3,9 +3,10 @@ CompileFlags:
   Add:
     - -std=c++17
     - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport
-    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/AHT_OT_solver
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/Solver
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/Solver/AHT_OT
     - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/utils
-    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/SemiOT_solver
+    - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/OptimalTransport/Solver/SemiOT
     - -I/opt/homebrew/include/eigen3
     - -I/Users/lgxgeogo/Desktop/MyDoc/GeometryLab/ddg-exercises/deps/polyscope/deps/stb
     - -DEIGEN_DONT_VECTORIZE

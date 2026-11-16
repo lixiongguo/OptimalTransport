@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 把 AHT_OT_solver 编译成 ot-interpolation.html 用的 WASM 内核。
+# 把 Solver/AHT_OT 编译成 Application/ot-interpolation.html 用的 WASM 内核。
 #
 #   ./wasm/build_wasm.sh
 #
-# 产物：assets/wasm/omt_solver.js + omt_solver.wasm
+# 产物：Application/assets/wasm/omt_solver.js + omt_solver.wasm
 # 依赖：本机 emscripten（默认取 lixiongguo.github.io/cpp/emsdk）、Eigen 头文件。
 set -euo pipefail
 
@@ -33,20 +33,20 @@ if ! command -v em++ >/dev/null 2>&1; then
   exit 1
 fi
 
-OUT_DIR="assets/wasm"
+OUT_DIR="Application/assets/wasm"
 mkdir -p "$OUT_DIR"
 
 echo "[wasm] em++ -> $OUT_DIR/omt_solver.js"
 em++ -std=c++17 -O3 \
   -DEIGEN_DONT_VECTORIZE -DEIGEN_DONT_PARALLELIZE -DEIGEN_MPL2_ONLY \
-  -I . -I AHT_OT_solver -I utils -I "$EIGEN_INC" -I "$STB_INC" \
+  -I . -I Solver -I Solver/AHT_OT -I utils -I "$EIGEN_INC" -I "$STB_INC" \
   wasm/omt_bindings.cpp \
   -sMODULARIZE=1 -sEXPORT_NAME=OmTSolver \
   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 \
   -sMAXIMUM_MEMORY=2147483648 -sSTACK_SIZE=16777216 \
   -sENVIRONMENT=web,node \
-  -sEXPORTED_FUNCTIONS='["_malloc","_free","_solve_omt_series","_get_omt_frame_width","_get_omt_frame_height","_get_omt_frame_count","_get_omt_result_size","_get_omt_result_data","_get_omt_last_time_ms","_omt_dispose"]' \
-  -sEXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue"]' \
+  -sEXPORTED_FUNCTIONS='["_malloc","_free","_solve_omt_series","_get_omt_frame_width","_get_omt_frame_height","_get_omt_frame_count","_get_omt_result_size","_get_omt_result_data","_get_omt_last_time_ms","_get_omt_iterations","_omt_dispose"]' \
+  -sEXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue","HEAPU8"]' \
   -o "$OUT_DIR/omt_solver.js"
 
 echo "[wasm] done"

@@ -5,6 +5,7 @@
 #   ./build.sh gui         编译并打开半离散窗口
 #   ./build.sh check [N]   无窗口跑一次半离散传输
 #   ./build.sh caustic     编译并检查焦散透镜
+#   ./build.sh web-data    训练一次并导出网页实验 neural_ot_viewer/data.js
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -24,7 +25,8 @@ eigen_include() {
   fi
   local candidate
   for candidate in /opt/homebrew/include/eigen3 /usr/local/include/eigen3 \
-                   "$PWD/../../deps/eigen-3.4.0" "$PWD/../../deps/eigen-3.3.9"; do
+                   "$PWD/../../deps/eigen-3.4.0" "$PWD/../../deps/eigen-3.3.9" \
+                   "$PWD/../libIGL_deform/build/_deps/eigen-src"; do
     if [[ -d "$candidate/Eigen" ]]; then
       echo "$candidate"
       return
@@ -103,11 +105,28 @@ build_examples() {
   echo "[build] done: build/release/ot_examples"
 }
 
+# 生成网页实验 neural_ot_viewer/data.js（训练一次并导出轨迹）。
+build_web_data() {
+  local eigen
+  eigen="$(eigen_include)"
+  mkdir -p build/release
+  echo "[build] $CXX ${flags[*]} -> build/release/neural_ot_export"
+  "$CXX" "${flags[@]}" -I . -I utils -I "$eigen" \
+    neural_ot_viewer/export.cpp \
+    -o build/release/neural_ot_export
+  echo "[build] 训练并导出 neural_ot_viewer/data.js"
+  ./build/release/neural_ot_export neural_ot_viewer/data.js
+}
+
 case "$MODE" in
   gui-build)
     build_viewer
     build_caustic
     build_examples
+    build_web_data
+    ;;
+  web-data)
+    build_web_data
     ;;
   examples)
     build_examples
@@ -126,7 +145,7 @@ case "$MODE" in
     ./build/release/caustic_lens --check
     ;;
   *)
-    echo "usage: ./build.sh [gui-build|gui|check [sites]|caustic|examples]" >&2
+    echo "usage: ./build.sh [gui-build|gui|check [sites]|caustic|examples|web-data]" >&2
     exit 2
     ;;
 esac

@@ -8,3 +8,4 @@
 - `Application`：半离散窗口、焦散透镜窗口、网页和示例
 - `data`：示例图像
 - `geometry`、`test`、`utils`、`wasm`
+- `neural_ot_viewer`：Neural OT 训练可视化网页（Hub「最优传输」里可直接打开；`./build.sh web-data` 重新训练并导出 `data.js`）

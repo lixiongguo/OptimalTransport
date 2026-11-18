@@ -161,10 +161,59 @@ body {
 /* Display area */
 .display {
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
   align-items: center;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
+}
+
+/* Multi-solver comparison */
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin-bottom: 26px;
+  align-items: start;
+}
+.solver-card {
+  background: #0e1526;
+  border: 1px solid rgba(120,140,200,0.18);
+  border-radius: 16px;
+  padding: 14px 14px 12px;
+  text-align: center;
+}
+.solver-card .name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffaa44;
+  letter-spacing: 1px;
+}
+.solver-card .name .tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(120,150,255,0.12);
+  color: #8aa4d8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.solver-card canvas {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  image-rendering: pixelated;
+  display: block;
+  margin-top: 10px;
+  background: #070b14;
+}
+.solver-card .meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #6e84b8;
+  font-family: Consolas, monospace;
+  letter-spacing: 0.5px;
 }
 .image-box {
   background: #0e1526;
@@ -233,6 +282,24 @@ body {
   color: #8aa4d8;
   margin-bottom: 14px;
 }
+.frames-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.frames-block .fb-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.frames-block .fb-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffaa44;
+  letter-spacing: 1px;
+}
+.frames-block .fb-meta { font-size: 11px; color: #5a74a8; }
 .frames-grid {
   display: flex;
   gap: 10px;
@@ -273,8 +340,8 @@ body {
 .status-bar.loading { color: #ffaa44; }
 
 @media (max-width: 800px) {
-  .display { grid-template-columns: 1fr 1fr; }
-  .image-box:nth-child(2) { grid-column: span 2; }
+  .display { grid-template-columns: 1fr; }
+  .compare-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -286,6 +353,7 @@ body {
   <div class="nav-select">
     <label>实验：</label>
     <a href="/">&larr; 实验列表</a>
+    <a href="semi-discrete-ot.html">半离散 OT &rarr;</a>
   </div>
 </div>
 
@@ -303,15 +371,7 @@ body {
 
   <!-- Controls -->
   <div class="controls">
-    <button id="compute-btn" class="compute" disabled>⚡ 计算最优传输</button>
-    <label>求解器
-      <select id="solver-select">
-        <option value="0" selected>AHT</option>
-        <option value="1">Sinkhorn</option>
-        <option value="2">FFT</option>
-        <option value="semi">半离散</option>
-      </select>
-    </label>
+    <button id="compute-btn" class="compute" disabled>⚡ 计算并对比全部算法</button>
     <label>帧数
       <select id="frames-select">
         <option value="6">6</option>
@@ -320,20 +380,20 @@ body {
         <option value="16">16</option>
       </select>
     </label>
-    <label id="block-label">块大小
+    <label>AHT 块大小
       <select id="block-select">
         <option value="2">2</option>
         <option value="4" selected>4</option>
         <option value="8">8</option>
       </select>
     </label>
-    <label id="eq-label">均衡化
+    <label>AHT 均衡化
       <select id="eq-select">
         <option value="0" selected>总质量比</option>
         <option value="1">直方图均衡</option>
       </select>
     </label>
-    <label id="eps-label">正则 ε
+    <label>Sinkhorn 正则 ε
       <select id="eps-select">
         <option value="10">0.010</option>
         <option value="20" selected>0.020</option>
@@ -349,14 +409,13 @@ body {
       <div class="label" id="label-src">SOURCE — flame_1</div>
     </div>
     <div class="image-box">
-      <canvas id="canvas-interp"></canvas>
-      <div class="label">INTERPOLATED — t = <span id="label-t">0.50</span></div>
-    </div>
-    <div class="image-box">
       <canvas id="canvas-img1"></canvas>
       <div class="label" id="label-tgt">TARGET — flame_2</div>
     </div>
   </div>
+
+  <!-- 多算法并排对比 -->
+  <div class="compare-grid" id="compare-grid"></div>
 
   <!-- Slider -->
   <div class="slider-section">
@@ -367,8 +426,8 @@ body {
   </div>
 
   <!-- All Frames -->
-  <div class="frames-title" id="frames-label">插值序列（点击计算后生成）</div>
-  <div class="frames-grid" id="frames-grid"></div>
+  <div class="frames-title" id="frames-label">插值序列对比（点击计算后生成）</div>
+  <div class="frames-stack" id="frames-grid"></div>
 
   <!-- Status -->
   <div class="status-bar" id="status-bar">等待加载图像...</div>
@@ -379,17 +438,23 @@ body {
   // ============ State ============
   let omtInstance = null, omtReady = false, omtFailed = false;
   let image0Data = null, image1Data = null;  // { data: Uint8ClampedArray, w, h }
-  let frameData = null;                       // { frames: [Uint8ClampedArray], w, h }
+  let results = [];                           // 每个算法一份 { id, name, frames, w, h, timeMs, iterations }
   let currentT = 0.5;
+
+  // 一次算完这几个算法，结果并排展示。
+  const SOLVERS = [
+    { id: 0, name: 'AHT（自研）', tag: '块网格 + 梯度流' },
+    { id: 1, name: 'Sinkhorn', tag: '熵正则' },
+    { id: 2, name: 'FFT', tag: '频域' }
+  ];
 
   const canvasImg0 = document.getElementById('canvas-img0');
   const canvasImg1 = document.getElementById('canvas-img1');
-  const canvasInterp = document.getElementById('canvas-interp');
   const statusBar = document.getElementById('status-bar');
   const computeBtn = document.getElementById('compute-btn');
   const tSlider = document.getElementById('t-slider');
   const tDisplay = document.getElementById('t-display');
-  const labelT = document.getElementById('label-t');
+  const compareGrid = document.getElementById('compare-grid');
   const framesGrid = document.getElementById('frames-grid');
   const framesLabel = document.getElementById('frames-label');
 
@@ -530,10 +595,10 @@ body {
     const pair = IMAGE_PAIRS[key] || IMAGE_PAIRS.flame;
 
     computeBtn.disabled = true;
-    frameData = null;
+    results = [];
     framesGrid.innerHTML = '';
-    framesLabel.textContent = '插值序列（点击计算后生成）';
-    drawFrameToCanvas(canvasInterp, null, 0, 0);
+    framesLabel.textContent = '插值序列对比（点击计算后生成）';
+    paintCompare();
 
     try {
       setStatus('加载 ' + pair.src + ' ...', 'loading');
@@ -555,109 +620,171 @@ body {
 
       computeBtn.disabled = false;
       setStatus('就绪 — ' + pair.labelSrc + ' → ' + pair.labelTgt + '（' +
-        image0Data.w + '×' + image0Data.h + '），点击"计算最优传输"', 'success');
+        image0Data.w + '×' + image0Data.h + '），点击"计算并对比全部算法"', 'success');
     } catch (e) {
       setStatus('图像加载失败: ' + e.message, 'error');
       console.error(e);
     }
   }
 
-  // ============ Compute OT ============
-  async function computeOT() {
+  // ============ Compute all solvers ============
+  async function computeAll() {
     if (!omtReady || !image0Data || !image1Data) return;
 
     const numFrames = parseInt(document.getElementById('frames-select').value);
     const squareEdgeLen = parseInt(document.getElementById('block-select').value);
     const eqMethod = parseInt(document.getElementById('eq-select').value);
-    const solverId = parseInt(document.getElementById('solver-select').value);
     const epsilonMilli = parseInt(document.getElementById('eps-select').value);
-    const solverName = solverId === 1 ? 'Sinkhorn' : (solverId === 2 ? 'FFT' : 'AHT');
 
     computeBtn.disabled = true;
     tSlider.disabled = true;
-    setStatus(solverName + ' 计算中... 这可能需要几秒钟', 'loading');
+    results = [];
+    paintCompare();
+    framesGrid.innerHTML = '';
     framesLabel.textContent = '计算中...';
 
+    const w = image0Data.w, h = image0Data.h;
+    const channels = 4;
+    const len = w * h * channels;
+
+    const ptr0 = omtInstance._malloc(len);
+    const ptr1 = omtInstance._malloc(len);
+    omtInstance.HEAPU8.set(new Uint8Array(image0Data.data), ptr0);
+    omtInstance.HEAPU8.set(new Uint8Array(image1Data.data), ptr1);
+
+    const collected = [];
     try {
-      const w = image0Data.w, h = image0Data.h;
-      // Convert RGBA to flat array for WASM (4 channels)
-      const channels = 4;
-      const len0 = w * h * channels;
-      const len1 = w * h * channels;
+      for (let s = 0; s < SOLVERS.length; s++) {
+        const solver = SOLVERS[s];
+        setStatus('(' + (s + 1) + '/' + SOLVERS.length + ') ' + solver.name + ' 计算中...', 'loading');
 
-      // Copy data to new arrays for WASM transfer
-      const data0 = new Uint8Array(image0Data.data);
-      const data1 = new Uint8Array(image1Data.data);
+        const ret = omtInstance.ccall('solve_omt_series', 'number',
+          ['number', 'number', 'number', 'number',
+           'number', 'number', 'number', 'number',
+           'number', 'number', 'number', 'number',
+           'number', 'number'],
+          [ptr0, len, w, h,
+           ptr1, len, w, h,
+           channels, squareEdgeLen, numFrames, eqMethod,
+           solver.id, epsilonMilli]
+        );
 
-      const ptr0 = omtInstance._malloc(len0);
-      const ptr1 = omtInstance._malloc(len1);
-
-      // Write pixel data to WASM heap
-      for (let i = 0; i < len0; i++) {
-        omtInstance.setValue(ptr0 + i, data0[i], 'i8');
-        omtInstance.setValue(ptr1 + i, data1[i], 'i8');
-      }
-
-      const ret = omtInstance.ccall('solve_omt_series', 'number',
-        ['number', 'number', 'number', 'number',
-         'number', 'number', 'number', 'number',
-         'number', 'number', 'number', 'number',
-         'number', 'number'],
-        [ptr0, len0, w, h,
-         ptr1, len1, w, h,
-         channels, squareEdgeLen, numFrames, eqMethod,
-         solverId, epsilonMilli]
-      );
-
-      omtInstance._free(ptr0);
-      omtInstance._free(ptr1);
-
-      if (ret !== 0) {
-        throw new Error('OT 计算失败 (错误码: ' + ret + ')');
-      }
-
-      const outW = omtInstance.ccall('get_omt_frame_width', 'number', [], []);
-      const outH = omtInstance.ccall('get_omt_frame_height', 'number', [], []);
-      const outCount = omtInstance.ccall('get_omt_frame_count', 'number', [], []);
-      const outSize = omtInstance.ccall('get_omt_result_size', 'number', [], []);
-      const outPtr = omtInstance.ccall('get_omt_result_data', 'number', [], []);
-      const timeMs = omtInstance.ccall('get_omt_last_time_ms', 'number', [], []);
-      const iterations = omtInstance.ccall('get_omt_iterations', 'number', [], []);
-
-      // Read frames from WASM (getValue('i8') returns signed, use & 0xFF)
-      const frameSize = outW * outH * 4;
-      const rawSize = outSize;
-      frameData = { frames: [], w: outW, h: outH, count: outCount };
-
-      for (let f = 0; f < outCount; f++) {
-        const frame = new Uint8ClampedArray(frameSize);
-        const offset = f * frameSize;
-        for (let i = 0; i < frameSize; i++) {
-          frame[i] = omtInstance.getValue(outPtr + offset + i, 'i8') & 0xFF;
+        if (ret !== 0) {
+          collected.push({ id: solver.id, name: solver.name, error: '计算失败（错误码 ' + ret + '）' });
+          continue;
         }
-        frameData.frames.push(frame);
+
+        const outW = omtInstance.ccall('get_omt_frame_width', 'number', [], []);
+        const outH = omtInstance.ccall('get_omt_frame_height', 'number', [], []);
+        const outCount = omtInstance.ccall('get_omt_frame_count', 'number', [], []);
+        const outPtr = omtInstance.ccall('get_omt_result_data', 'number', [], []);
+        const timeMs = omtInstance.ccall('get_omt_last_time_ms', 'number', [], []);
+        const iterations = omtInstance.ccall('get_omt_iterations', 'number', [], []);
+
+        // 结果缓冲区是全局的，下一轮求解会覆盖，所以先整块拷出来。
+        const frameSize = outW * outH * 4;
+        const frames = [];
+        for (let f = 0; f < outCount; f++) {
+          const offset = outPtr + f * frameSize;
+          frames.push(new Uint8ClampedArray(omtInstance.HEAPU8.subarray(offset, offset + frameSize)));
+        }
+
+        collected.push({
+          id: solver.id, name: solver.name, frames: frames,
+          w: outW, h: outH, timeMs: timeMs, iterations: iterations
+        });
+
+        omtInstance.ccall('omt_dispose', 'void', [], []);
       }
-
-      // Cleanup
-      omtInstance.ccall('omt_dispose', 'void', [], []);
-
-      // Update UI
-      tSlider.disabled = false;
-      tSlider.value = Math.floor(outCount / 2) * (100 / outCount);
-      updateSlider();
-      renderFrames();
-
-      const iterText = iterations > 0 ? '，迭代 ' + iterations : '';
-      setStatus('计算完成 — ' + solverName + ' — ' + outW + '×' + outH + ' × ' + outCount +
-        ' 帧' + iterText + '，耗时 ' + timeMs.toFixed(0) + ' ms', 'success');
-      framesLabel.textContent = '插值序列（' + outCount + ' 帧）';
     } catch (e) {
       setStatus('计算失败: ' + e.message, 'error');
       console.error(e);
       omtInstance.ccall('omt_dispose', 'void', [], []);
     } finally {
+      omtInstance._free(ptr0);
+      omtInstance._free(ptr1);
       computeBtn.disabled = false;
+      tSlider.disabled = false;
     }
+
+    results = collected;
+    paintCompare();
+    renderFrames();
+
+    const ok = results.filter(function(r) { return !r.error; });
+    if (ok.length === 0) {
+      setStatus('全部算法均失败', 'error');
+      return;
+    }
+    tSlider.value = Math.floor((ok[0].frames.length / 2)) * (100 / ok[0].frames.length);
+    updateSlider();
+
+    framesLabel.textContent = '插值序列对比（每个算法 ' + ok[0].frames.length + ' 帧）';
+    setStatus('计算完成 — ' + ok.map(function(r) {
+      return r.name + ' ' + r.timeMs.toFixed(0) + ' ms';
+    }).join('　|　'), 'success');
+  }
+
+  // ============ Comparison cards ============
+  function buildCompareCards() {
+    compareGrid.innerHTML = '';
+    SOLVERS.forEach(function(sv) {
+      const card = document.createElement('div');
+      card.className = 'solver-card';
+
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = sv.name;
+      if (sv.tag) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = sv.tag;
+        name.appendChild(tag);
+      }
+
+      const canvas = document.createElement('canvas');
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = '未计算';
+
+      card.appendChild(name);
+      card.appendChild(canvas);
+      card.appendChild(meta);
+      compareGrid.appendChild(card);
+
+      sv.card = card;
+      sv.canvas = canvas;
+      sv.meta = meta;
+    });
+  }
+
+  function resultOf(solverId) {
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].id === solverId) return results[i];
+    }
+    return null;
+  }
+
+  function frameIndex(count, t) {
+    if (!count) return 0;
+    return Math.min(Math.floor(t * count), count - 1);
+  }
+
+  function paintCompare() {
+    SOLVERS.forEach(function(sv) {
+      const r = resultOf(sv.id);
+      if (!r || r.error) {
+        sv.canvas.width = 1;
+        sv.canvas.height = 1;
+        sv.meta.textContent = r ? r.error : '未计算';
+        return;
+      }
+      const idx = frameIndex(r.frames.length, currentT);
+      drawFrameToCanvas(sv.canvas, r.frames[idx], r.w, r.h);
+      const iterText = r.iterations > 0 ? ' · 迭代 ' + r.iterations : '';
+      sv.meta.textContent = 't=' + currentT.toFixed(2) + ' · ' + r.w + '×' + r.h +
+        ' · ' + r.timeMs.toFixed(0) + ' ms' + iterText;
+    });
   }
 
   // ============ Slider ============
@@ -665,54 +792,57 @@ body {
     const val = parseInt(tSlider.value) / 100;
     currentT = val;
     tDisplay.textContent = val.toFixed(2);
-    labelT.textContent = val.toFixed(2);
 
-    // Draw interpolated frame
-    if (frameData && frameData.frames.length > 0) {
-      const nFrames = frameData.frames.length;
-      const idx = Math.min(Math.floor(val * nFrames), nFrames - 1);
-      drawFrameToCanvas(canvasInterp, frameData.frames[idx], frameData.w, frameData.h);
+    paintCompare();
 
-      // Highlight active frame
-      document.querySelectorAll('.frame-item').forEach(function(el) {
-        el.classList.toggle('active', parseInt(el.dataset.idx) === idx);
-      });
-    }
+    document.querySelectorAll('.frame-item').forEach(function(el) {
+      const r = resultOf(parseInt(el.dataset.solver));
+      if (!r || r.error) return;
+      el.classList.toggle('active', parseInt(el.dataset.idx) === frameIndex(r.frames.length, val));
+    });
   }
 
   // ============ Frames Grid ============
-  function renderFrames() {
-    framesGrid.innerHTML = '';
-    if (!frameData) return;
+  function renderFrameRow(solver, result) {
+    const block = document.createElement('div');
+    block.className = 'frames-block';
 
-    const nFrames = frameData.frames.length;
+    const head = document.createElement('div');
+    head.className = 'fb-head';
+    const name = document.createElement('span');
+    name.className = 'fb-name';
+    name.textContent = solver.name;
+    const meta = document.createElement('span');
+    meta.className = 'fb-meta';
+    meta.textContent = result.frames.length + ' 帧 · ' + result.w + '×' + result.h +
+      ' · ' + result.timeMs.toFixed(0) + ' ms';
+    head.appendChild(name);
+    head.appendChild(meta);
+
+    const row = document.createElement('div');
+    row.className = 'frames-grid';
+
     const maxH = 80;
-    const scale = maxH / Math.max(frameData.h, 1);
-    const thumbW = Math.round(frameData.w * scale);
+    const scale = maxH / Math.max(result.h, 1);
+    const thumbW = Math.max(1, Math.round(result.w * scale));
     const thumbH = maxH;
 
-    for (let i = 0; i < nFrames; i++) {
+    for (let i = 0; i < result.frames.length; i++) {
       const div = document.createElement('div');
       div.className = 'frame-item';
       div.dataset.idx = i;
+      div.dataset.solver = solver.id;
 
       const canvas = document.createElement('canvas');
       canvas.width = thumbW;
       canvas.height = thumbH;
 
-      // Scale down the frame
-      const srcData = frameData.frames[i];
-      const srcW = frameData.w, srcH = frameData.h;
-      const ctx = canvas.getContext('2d');
-
-      // Use offscreen canvas for full-res then scale
       const offCanvas = document.createElement('canvas');
-      offCanvas.width = srcW;
-      offCanvas.height = srcH;
-      const offCtx = offCanvas.getContext('2d');
-      offCtx.putImageData(new ImageData(srcData.slice(), srcW, srcH), 0, 0);
-
-      ctx.drawImage(offCanvas, 0, 0, thumbW, thumbH);
+      offCanvas.width = result.w;
+      offCanvas.height = result.h;
+      offCanvas.getContext('2d').putImageData(
+        new ImageData(result.frames[i].slice(), result.w, result.h), 0, 0);
+      canvas.getContext('2d').drawImage(offCanvas, 0, 0, thumbW, thumbH);
 
       const fn = document.createElement('div');
       fn.className = 'fn';
@@ -721,36 +851,34 @@ body {
       div.appendChild(canvas);
       div.appendChild(fn);
       div.addEventListener('click', function() {
-        tSlider.value = Math.round(i / (nFrames - 1) * 100);
+        tSlider.value = result.frames.length > 1
+          ? Math.round(i / (result.frames.length - 1) * 100) : 50;
         updateSlider();
       });
 
-      framesGrid.appendChild(div);
+      row.appendChild(div);
     }
+
+    block.appendChild(head);
+    block.appendChild(row);
+    framesGrid.appendChild(block);
+  }
+
+  function renderFrames() {
+    framesGrid.innerHTML = '';
+    const ok = results.filter(function(r) { return !r.error; });
+    if (ok.length === 0) return;
+    SOLVERS.forEach(function(sv) {
+      const r = resultOf(sv.id);
+      if (r && !r.error) renderFrameRow(sv, r);
+    });
   }
 
   // ============ Init ============
   tSlider.addEventListener('input', updateSlider);
 
-  function syncSolverControls() {
-    const solverId = document.getElementById('solver-select').value;
-    if (solverId === 'semi') {
-      location.href = 'semi-discrete-ot.html';
-      return;
-    }
-    document.getElementById('block-label').style.display = solverId === '0' ? '' : 'none';
-    document.getElementById('eq-label').style.display = solverId === '0' ? '' : 'none';
-    document.getElementById('eps-label').style.display = solverId === '1' ? '' : 'none';
-  }
-
-  const requestedSolver = new URLSearchParams(location.search).get('solver');
-  if (requestedSolver === '0' || requestedSolver === '1' || requestedSolver === '2') {
-    document.getElementById('solver-select').value = requestedSolver;
-  }
-
-  computeBtn.addEventListener('click', computeOT);
-  document.getElementById('solver-select').addEventListener('change', syncSolverControls);
-  syncSolverControls();
+  buildCompareCards();
+  computeBtn.addEventListener('click', computeAll);
 
   document.getElementById('pair-select').addEventListener('change', function() {
     if (!omtReady) return;
